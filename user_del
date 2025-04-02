@@ -1,11 +1,9 @@
 #! /bin/bash
 
-if [[ $# -eq 0 ]];then
-    read -rp "Enter name user for removed: " nameUserArray
-else
-    nameUserArray=$@
-fi
+# Проверка на наличие аргументов - name_users
+[ $# -eq 0 ] && read -rp "Enter name user for removed: " nameUserArray || nameUserArray=$@
 
+# Проходим пр списку users и удаляем
 for user in $nameUserArray; do
     sudo userdel -r -d0 $user
 done

@@ -1,23 +1,21 @@
 #! /bin/bash
 
-if [[ $# -eq 0 ]];then
-    read -rp "Enter name user/s: " usersArray
-else
-    usersArray=$@
-fi
+# Проверка на наличие аргументов
+[ $# -eq 0 ] && read -rp "Enter name user/s: " usersArray || usersArray=$@
 
+# Проходим по каждому name_user
 for user in $usersArray;do
+    # проверка на существование пользователя
+    # если такой пользователь существует то True иначе False
+    # True - user уже существует выведится сообщение
+    # False - creat user/password/выставиться просроченный пароль
     userPasswd=$(awk -F':' -v user="$user" '$1 == user{print $1}' /etc/passwd)
-    password=/tmp/passwdTmp
     if [[ $userPasswd ]];then
         echo "User name: $user, exists (существует)"
-        continue
     else
         sudo useradd -m $user
-        echo "$user:123456" > password
-        cat password > chpasswd
+        echo "$user:123456" | sudo chpasswd
         sudo chage -d 0 $user
-        rm -f password
     fi
 done
     
