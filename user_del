@@ -1,0 +1,11 @@
+#! /bin/bash
+
+if [[ $# -eq 0 ]];then
+    read -rp "Enter name user for removed: " nameUserArray
+else
+    nameUserArray=$@
+fi
+
+for user in $nameUserArray; do
+    sudo userdel -r -d0 $user
+done

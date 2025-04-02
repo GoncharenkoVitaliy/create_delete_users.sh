@@ -1,0 +1,23 @@
+#! /bin/bash
+
+if [[ $# -eq 0 ]];then
+    read -rp "Enter name user/s: " usersArray
+else
+    usersArray=$@
+fi
+
+for user in $usersArray;do
+    userPasswd=$(awk -F':' -v user="$user" '$1 == user{print $1}' /etc/passwd)
+    password=/tmp/passwdTmp
+    if [[ $userPasswd ]];then
+        echo "User name: $user, exists (существует)"
+        continue
+    else
+        sudo useradd -m $user
+        echo "$user:123456" > password
+        cat password > chpasswd
+        sudo chage -d 0 $user
+        rm -f password
+    fi
+done
+    
