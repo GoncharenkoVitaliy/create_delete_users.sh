@@ -5,5 +5,5 @@
 
 # Проходим пр списку users и удаляем
 for user in $nameUserArray; do
-    sudo userdel -r -d0 $user
+    sudo userdel -r $user
 done
