@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 # Проверка на наличие аргументов - name_users
 [ $# -eq 0 ] && read -rp "Enter name user for removed: " nameUserArray || nameUserArray=$@

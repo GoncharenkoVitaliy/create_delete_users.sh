@@ -1,21 +1,106 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
-# Проверка на наличие аргументов
-[ $# -eq 0 ] && read -rp "Enter name user/s: " usersArray || usersArray=$@
+# Проверка на запуск от root
+if [ "$(id -u)" != 0 ]; then
+    echo Permissions deny >&2
+    exit 1
+fi
 
-# Проходим по каждому name_user
-for user in $usersArray;do
-    # проверка на существование пользователя
-    # если такой пользователь существует то True иначе False
-    # True - user уже существует выведится сообщение
-    # False - creat user/password/выставиться просроченный пароль
-    userPasswd=$(awk -F':' -v user="$user" '$1 == user{print $1}' /etc/passwd)
-    if [[ $userPasswd ]];then
-        echo "User name: $user, exists (существует)"
-    else
-        sudo useradd -m $user
-        echo "$user:123456" | sudo chpasswd
-        sudo chage -d 0 $user
+# @=========================== Variebles ========================
+file=/var/users
+#shell=/sbin/nologin
+shell=/bin/bash
+oldIFS=$IFS
+
+# @=========================== Function =========================
+# Добавление прав root
+sudoers_privileges(){
+    # echo "проверка sudoers"
+    local var_name=$1
+
+    if [ "$var_name" = "admin" ];then
+        if ! grep "$var_name" /etc/sudoers; then
+            echo Добавляем права root для: $var_name
+            sudo cp /etc/sudoers{,.bkp}
+            echo "$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null
+        fi
+    elif ! grep "%$var_name" /etc/sudoers; then
+        echo Добавляем права root для группы: $var_name
+        sudo cp /etc/sudoers{,.bkp}
+        echo "%$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null
     fi
-done
-    
+}
+# Добавление пароля для пользователя
+get_password(){
+    local username=$1
+    echo "Добавление пароля для пользователя: $username"
+    local pass='123456'
+
+    # Задаем временный пароль
+    echo "$username:$pass" | sudo chpasswd
+
+    # Устанавливаем требование смены пароля при следующем входе
+    sudo passwd --expire "$user"
+}
+
+# Создаем Пользователя и группы и присвоение прав администратора при необходимости
+create_user(){
+	if ! getent group "$group" > /dev/null 2>&1; then
+        sudo groupadd "$group"
+    else
+        echo "Группа '$group' - уже существует"
+    fi
+
+    if [ "$group" = it ] || [ "$group" = security ]; then
+        sudoers_privileges "$group"
+        shell=/bin/bash
+    elif [ "$user" = admin ];then
+        sudoers_privileges "$user"
+        shell=/bin/bash
+    fi    
+    # Проверяем, существует ли пользователь, и создаем, если нет
+    if ! id -u "$user" > /dev/null 2>&1; then
+        sudo useradd "$user" -m -g "$group" -s "$shell"
+        get_password "$user"
+        echo "Пользователь '$user' успешно создан."
+    else
+        echo "Пользователь '$user' уже существует."
+    fi
+}
+
+# @========================== Main Body =========================
+# Проверяем, заданны ли имя пользователя и группа/группы
+if [ ! -z $2 ];then
+    user=$1
+    group=$2
+    create_user $user $group
+elif [ -f $file ];then
+    echo "Данные о пользователях и группах из файла '$file'"
+    IFS=$'\n'
+    for line in $(cat $file);do
+        echo $line
+        user=$(cut -d' ' -f1 <<< $line)
+        group=$(cut -d' ' -f2 <<< $line)
+        echo "User: $user; Group: $group"
+        create_user $user $group
+    done
+    IFS=$oldIFS
+else
+    echo Welcom!
+
+    select option in "Add user" "Show users" "Exit";do
+        case $option in
+            "Add user")
+                read -r -p "Введите имя пользователя: " user
+                read -r -p "Введите имя имя группы: " group
+                create_user $user $group ;;
+            "Show users") cut -d: -f1 /etc/passwd ;;
+            "Exit")
+                echo "By!"
+                break ;;
+            *) echo Wrong option ;;
+        esac
+    done
+fi
+
+# !**** создать пользователя со своей группой а остальные группы добавить group=[$2 $3 $4 $5]
