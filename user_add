@@ -7,9 +7,8 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 # @=========================== Variebles ========================
-file=/var/users
-#shell=/sbin/nologin
-shell=/bin/bash
+file=/var/list_users.csv
+users=$(cut -d' ' -f2,3,5 $file | tail -n +2 | tr '[:upper:]' '[:lower:]')
 oldIFS=$IFS
 
 # @=========================== Function =========================
@@ -20,52 +19,63 @@ sudoers_privileges(){
 
     if [ "$var_name" = "admin" ];then
         if ! grep "$var_name" /etc/sudoers; then
-            echo Добавляем права root для: $var_name
+            #echo Добавляем права root для пользователя: $var_name
             sudo cp /etc/sudoers{,.bkp}
-            echo "$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null
+            echo "$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null 2>&1
         fi
     elif ! grep "%$var_name" /etc/sudoers; then
-        echo Добавляем права root для группы: $var_name
+        #echo Добавляем права root для группы: $var_name
         sudo cp /etc/sudoers{,.bkp}
-        echo "%$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null
+        echo "%$var_name ALL=(ALL) ALL" | tee -a /etc/sudoers > /dev/null 2>&1
     fi
 }
 # Добавление пароля для пользователя
 get_password(){
     local username=$1
-    echo "Добавление пароля для пользователя: $username"
     local pass='123456'
 
-    # Задаем временный пароль
-    echo "$username:$pass" | sudo chpasswd
+    echo "$username:$pass" | sudo chpasswd > /dev/null 2>&1
 
     # Устанавливаем требование смены пароля при следующем входе
-    sudo passwd --expire "$user"
+    sudo passwd --expire "$user" > /dev/null 2>&1
 }
 
-# Создаем Пользователя и группы и присвоение прав администратора при необходимости
+# Создаем Пользователя и группы 
 create_user(){
+    local count=1
+    local base_user="$1"
+    local group="$2"
+    #local shell=/sbin/nologin
+    local shell=/bin/bash
+
+    # Проверяем и создаем группу
 	if ! getent group "$group" > /dev/null 2>&1; then
         sudo groupadd "$group"
-    else
-        echo "Группа '$group' - уже существует"
+
+        if [ "$group" = "it" ] || [ "$group" = "security" ]; then
+            sudoers_privileges "$group"
+        fi    
     fi
 
-    if [ "$group" = it ] || [ "$group" = security ]; then
-        sudoers_privileges "$group"
-        shell=/bin/bash
-    elif [ "$user" = admin ];then
+    # Проверяем и создаем пользователя (с обработкой существующих имен)
+    local user="$base_user"
+    while id -u "$user" > /dev/null 2>&1; do
+        user="${base_user}${count}"
+        count=$((count + 1))
+        echo "Пользователь '$base_user' существует. Пробуем имя: '$user'"
+        if [ "$count" -gt 1000 ]; then # Добавлена защита от бесконечного цикла
+            echo "Ошибка: Слишком много попыток создать пользователя с уникальным именем."
+            return 1
+        fi
+    done
+    if [ "$user" = "admin" ]; then
         sudoers_privileges "$user"
         shell=/bin/bash
-    fi    
-    # Проверяем, существует ли пользователь, и создаем, если нет
-    if ! id -u "$user" > /dev/null 2>&1; then
-        sudo useradd "$user" -m -g "$group" -s "$shell"
-        get_password "$user"
-        echo "Пользователь '$user' успешно создан."
-    else
-        echo "Пользователь '$user' уже существует."
     fi
+    sudo useradd "$user" -m -g "$group" -s "$shell"
+    get_password "$user"
+    echo "Пользователь '$user' успешно создан."
+    echo
 }
 
 # @========================== Main Body =========================
@@ -75,14 +85,12 @@ if [ ! -z $2 ];then
     group=$2
     create_user $user $group
 elif [ -f $file ];then
-    echo "Данные о пользователях и группах из файла '$file'"
     IFS=$'\n'
-    for line in $(cat $file);do
-        echo $line
-        user=$(cut -d' ' -f1 <<< $line)
-        group=$(cut -d' ' -f2 <<< $line)
-        echo "User: $user; Group: $group"
-        create_user $user $group
+    for line in $users;do
+        user=$(echo "$line" |cut -c1).$(echo "$line" |cut -d' ' -f2)
+        group=$(echo "$line" |cut -d' ' -f3)
+
+        create_user $user $group $line
     done
     IFS=$oldIFS
 else
